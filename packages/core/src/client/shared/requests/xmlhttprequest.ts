@@ -1,6 +1,7 @@
 import { getFlag, ScramjetContext } from "@/shared";
 import { rewriteUrl, unrewriteUrl, URLMeta } from "@rewriters/url";
 import { ScramjetClient } from "@client/index";
+import { iswindow } from "@client/entry";
 
 export default function (client: ScramjetClient, self: Self) {
 	let worker;
@@ -30,7 +31,13 @@ export default function (client: ScramjetClient, self: Self) {
 			const args = ctx.this[ARGS];
 			if (!args || args[2]) return;
 
-			if (!client.getFlag("syncxhr")) {
+			// A synchronous XHR from a worker can simply go through the service worker natively:
+			// the request is answered on the page's main thread, which a worker does not block.
+			// (Emscripten/wasm "httpfs" style file systems rely on this.)
+			if (!iswindow) return;
+
+			// On the main thread it would deadlock (the answer is produced by that same thread).
+			if (!client.flagEnabled("syncxhr")) {
 				console.warn("ignoring request - sync xhr disabled in flags");
 
 				return ctx.return(undefined);
