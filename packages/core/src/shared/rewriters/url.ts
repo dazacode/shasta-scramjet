@@ -133,7 +133,13 @@ export function rewriteUrl(
 			)
 		);
 	} else if (String_startsWith(url, "blob:")) {
-		return context.prefix.href + url;
+		// the worker/module flags have to survive for blob scripts too, otherwise a
+		// module worker made from a blob is wrapped as a classic one (importScripts)
+		const blobParams = new _URLSearchParams();
+		if (options?.isModule) blobParams.set(QP.isModule, "module");
+		if (options?.destination) blobParams.set(QP.destination, options.destination);
+		const blobQuery = blobParams.toString();
+		return context.prefix.href + url + (blobQuery ? "?" + blobQuery : "");
 	} else if (String_startsWith(url, "data:")) {
 		const URL_MAX_LENGTH = 1024 * 1024 * 2;
 		const BUFFER = 1024;
@@ -236,7 +242,8 @@ export function unrewriteUrl(url: string | URL, context: ScramjetContext) {
 			return url;
 		}
 		if (!String_startsWith(realUrl.href, context.prefix.href)) {
-			dbg.error("unrewriteurl: unexpected url", url);
+			// already a real url (never rewritten): handing it back is the right answer
+			dbg.debug("unrewriteurl: not a rewritten url", url);
 			return url;
 		}
 		const decodedHash = context.interface.codecDecode(realUrl.hash.slice(1));

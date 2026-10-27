@@ -243,6 +243,11 @@ async function handleBlobOrDataUrlFetch(
 	let dataUrl = request.rawUrl.pathname.substring(
 		handler.context.prefix.pathname.length
 	);
+	// the rewriter encodes blob:/data: specifiers in module imports like any other url
+	// (blob%3Ahttps%3A%2F%2F...), so the raw path is not the url itself: use the decoded one
+	if (!dataUrl.startsWith("blob:") && !dataUrl.startsWith("data:")) {
+		dataUrl = parsed.url.href;
+	}
 	let response: BareResponse;
 
 	if (dataUrl.startsWith("blob:")) {

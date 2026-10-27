@@ -162,7 +162,15 @@ export default function (client: ScramjetClient, self: typeof window) {
 			Object_defineProperty(element.prototype, attr, {
 				get() {
 					if (["src", "data", "href", "action", "formaction"].includes(attr)) {
-						return unrewriteUrl(descriptor.get.call(this), client.context);
+						const value = descriptor.get.call(this);
+						// a url that was never rewritten (e.g. a document.write'n <script src>) is already real
+						if (
+							/^https?:/.test(value) &&
+							!value.startsWith(client.context.prefix.href)
+						)
+							return value;
+
+						return unrewriteUrl(value, client.context);
 					}
 
 					return descriptor.get.call(this);

@@ -26,7 +26,9 @@ export function rewriteWorkers(
 		rewritten = TextDecoder_decode(rewritten);
 	}
 
-	if (flagEnabled("encapsulateWorkers", context, meta.origin)) {
+	// a module can't be encapsulated in a data: url: its (root-relative) import specifiers
+	// have no base to resolve against there, so every static import would fail to load
+	if (!isModule && flagEnabled("encapsulateWorkers", context, meta.origin)) {
 		// TODO: check if there's already a sourceURL/sourcemap before appending another?
 		rewritten += `//# sourceURL=${url}`;
 		str += script(b64(rewritten as string));

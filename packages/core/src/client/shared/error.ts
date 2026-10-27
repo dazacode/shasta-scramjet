@@ -23,6 +23,10 @@ export default function (client: ScramjetClient, _self: Self) {
 				}
 			} catch {}
 
+			// frames that already carry a real url (e.g. from a //# sourceURL) are left as they are
+			if (/^https?:/.test(url) && !url.startsWith(client.context.prefix.href))
+				continue;
+
 			try {
 				newstack = newstack.replaceAll(url, unrewriteUrl(url, client.context));
 			} catch {}
