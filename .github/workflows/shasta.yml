@@ -1,0 +1,42 @@
+name: Shasta fork checks
+
+# The upstream workflow (main.yml) still runs on every branch and builds the engine; these are
+# the checks for what *this fork* adds, so they can be fast.
+on:
+  push:
+    branches: [shasta]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  transports:
+    name: Transports package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter @shasta/transports typecheck
+
+      - name: Test
+        run: pnpm --filter @shasta/transports test
