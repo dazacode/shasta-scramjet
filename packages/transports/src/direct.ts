@@ -177,7 +177,7 @@ export class DirectTransport implements ProxyTransport {
 		socket.onclose = (event) => onclose(event.code, event.reason);
 		socket.onerror = () => onerror(`websocket error (${remote.host})`);
 		return [
-			(data) => socket.send(data as string | ArrayBufferLike | Blob | ArrayBufferView),
+			(data) => socket.send(data as Parameters<WebSocket["send"]>[0]),
 			(code, reason) => {
 				try {
 					socket.close(code, reason);
