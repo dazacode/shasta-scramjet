@@ -18,6 +18,7 @@ import {
 	JSON_parse,
 	JSON_stringify,
 	TextEncoder_encode,
+	TextDecoder_decode,
 	Array_from,
 	String_fromCodePoint,
 	btoa,
@@ -179,7 +180,11 @@ function rewriteHtmlInner(
 		},
 		undefined
 	);
-	traverseParsedHtml(handler.root, context, meta);
+	const handlers: InlineHandler[] | undefined = context.interface.inlineScript
+		? []
+		: undefined;
+	traverseParsedHtml(handler.root, context, meta, handlers);
+	if (handlers?.length) bindInlineHandlers(handler, handlers, context);
 
 	let htmlRoot: Element | undefined;
 	let headElement: Element | undefined;
@@ -343,10 +348,53 @@ export function unrewriteHtml(html: string, foreignContext?: ForeignContext) {
 
 // i need to add the attributes in during rewriting
 
+/** An `on*` attribute moved out of the markup: [element id, attribute, rewritten code]. */
+type InlineHandler = [number, string, string];
+
+/**
+ * A CSP without 'unsafe-inline' (an Isolated Web App) never runs `onclick="..."` attributes. They are
+ * compiled instead by one same-origin script at the end of the document, which assigns them as the
+ * element's handler properties (same `this` and `event`). It runs before DOMContentLoaded and the load
+ * event; an event that fires on an element before the document finishes parsing is missed.
+ */
+function bindInlineHandlers(
+	handler: DomHandler,
+	handlers: InlineHandler[],
+	context: ScramjetContext
+) {
+	let code = "(function () {\n\tvar bind = function (id, attr, fn) {\n";
+	code +=
+		'\t\tvar el = document.querySelector(\'[scramjet-h="\' + id + \'"]\');\n';
+	code += "\t\tif (el) el[attr] = fn;\n\t};\n";
+	for (const [id, attr, js] of handlers) {
+		code += `\tbind(${id}, ${JSON_stringify(attr)}, function (event) {\n${js}\n});\n`;
+	}
+	code += "})();\n";
+
+	const script = new Element("script", {
+		src: context.interface.inlineScript!(code),
+		"scramjet-injected": "true",
+	});
+	const findBody = (nodes: ChildNode[]): Element | undefined => {
+		for (const n of nodes) {
+			if (!isElementNode(n)) continue;
+			if (n.name === "body" || n.name === "frameset") return n;
+			const found = findBody(n.children);
+			if (found) return found;
+		}
+	};
+	const parent: { children: ChildNode[] } =
+		findBody(handler.root.children) ?? handler.root;
+	parent.children.push(script);
+}
+
+let inlineHandlerIds = 0;
+
 function traverseParsedHtml(
 	node: any,
 	context: ScramjetContext,
-	meta: URLMeta
+	meta: URLMeta,
+	handlers?: InlineHandler[]
 ) {
 	if (node.name === "base" && node.attribs.href !== undefined) {
 		meta.base = new _URL(node.attribs.href, meta.origin);
@@ -375,12 +423,26 @@ function traverseParsedHtml(
 		for (const [attr, value] of Object_entries(node.attribs)) {
 			if (eventAttributes.includes(attr)) {
 				node.attribs[`scramjet-attr-${attr}`] = value;
-				node.attribs[attr] = rewriteJs(
+				const js = rewriteJs(
 					value as string,
 					`(inline ${attr} on element)`,
 					context,
 					meta
 				);
+				if (handlers) {
+					if (node.attribs["scramjet-h"] === undefined)
+						node.attribs["scramjet-h"] = String(++inlineHandlerIds);
+					handlers.push([
+						Number(node.attribs["scramjet-h"]),
+						attr,
+						typeof js === "string"
+							? js
+							: TextDecoder_decode(js as Uint8Array<ArrayBuffer>),
+					]);
+					delete node.attribs[attr];
+					continue;
+				}
+				node.attribs[attr] = js;
 			}
 		}
 	}
@@ -430,13 +492,26 @@ function traverseParsedHtml(
 			);
 			const htmlcomment = /<!--[\s\S]*?-->/g;
 			js = js.replace(htmlcomment, "");
-			node.children[0].data = rewriteJs(
+			const out = rewriteJs(
 				js,
 				"(inline script element)",
 				context,
 				meta,
 				module
 			);
+			const rewritten =
+				typeof out === "string" ? out : TextDecoder_decode(out as Uint8Array<ArrayBuffer>);
+			if (context.interface.inlineScript) {
+				// same execution order as inline: a classic external script without async/defer blocks the parser
+				// like an inline one, and a module script is deferred either way. async/defer are ignored on inline
+				// scripts, so they must not start to apply now.
+				delete node.attribs.async;
+				delete node.attribs.defer;
+				node.attribs.src = context.interface.inlineScript(rewritten);
+				node.children[0].data = "";
+			} else {
+				node.children[0].data = rewritten;
+			}
 		}
 	}
 
@@ -463,7 +538,8 @@ function traverseParsedHtml(
 			node.childNodes[childNode] = traverseParsedHtml(
 				node.childNodes[childNode],
 				context,
-				meta
+				meta,
+				handlers
 			);
 		}
 	}

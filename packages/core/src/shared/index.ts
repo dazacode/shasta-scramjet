@@ -42,6 +42,12 @@ export type ScramjetInterface = {
 		isModule: boolean,
 		script: (src: string) => string
 	): string;
+	/**
+	 * Serves `code` from a same-origin URL and returns that URL. Set it when proxied documents run under a
+	 * CSP without 'unsafe-inline' (an Isolated Web App's is `script-src 'self'`): inline scripts then become
+	 * `<script src>` so they still run. Unset (the default), inline scripts stay inline.
+	 */
+	inlineScript?(code: string): string;
 };
 
 export type ScramjetContext = {

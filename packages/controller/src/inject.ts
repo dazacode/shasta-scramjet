@@ -176,13 +176,43 @@ type Init = {
 		prefix: URL,
 		cookieJar: CookieJar,
 		codecEncode: (input: string) => string,
-		codecDecode: (input: string) => string
+		codecDecode: (input: string) => string,
+		inline?: (code: string) => string
 	) => any;
 	codecEncode: (input: string) => string;
 	codecDecode: (input: string) => string;
 	initHeaders: RawHeaders;
 	history: TrackedHistoryState[];
 };
+
+/**
+ * A host that forbids inline script (an Isolated Web App) also enforces Trusted Types in every document,
+ * including about:blank frames a page makes, and both Scramjet's hooks and the page assign plain strings to
+ * script sinks: a pass-through default policy lets them through. A page's own "default" policy is created
+ * under another name instead of throwing.
+ */
+function allowStringScriptSinks(global: any) {
+	const tt = global.trustedTypes;
+	if (!tt || tt.defaultPolicy) return;
+	try {
+		const pass = (s: string) => s;
+		tt.createPolicy("default", {
+			createHTML: pass,
+			createScript: pass,
+			createScriptURL: pass,
+		});
+		const proto = global.TrustedTypePolicyFactory.prototype;
+		const createPolicy = proto.createPolicy;
+		let pagePolicies = 0;
+		proto.createPolicy = function (name: string, rules: unknown) {
+			return createPolicy.call(
+				this,
+				name === "default" ? "default-page-" + ++pagePolicies : name,
+				rules
+			);
+		};
+	} catch {}
+}
 
 export function load(init: Init) {
 	if (SCRAMJETCLIENT in globalThis) {
@@ -289,6 +319,7 @@ class ExecutionContextWrapper {
 	}
 
 	injectScramjet() {
+		if (this.init.config.inlineScripts) allowStringScriptSinks(this.global);
 		const frame = this.global.frameElement as HTMLIFrameElement | null;
 		if (frame && !frame.name) {
 			window.name = frame.name = createFrameId();
@@ -315,18 +346,26 @@ class ExecutionContextWrapper {
 				currentwin = currentwin.parent.window;
 			}
 		}
+		// scripts made in the page (script text, document.write, about:blank frames) go through the controller's
+		// frame too when inline script is forbidden (see Config.inlineScripts)
+		const inline: ((code: string) => string) | undefined =
+			this.init.config.inlineScripts && controllerFrame
+				? controllerFrame.inlineScript
+				: undefined;
 		const context: ScramjetContext = {
 			config: this.init.sjconfig,
 			prefix: this.init.prefix,
 			cookieJar: this.cookieJar,
 			interface: {
+				inlineScript: inline,
 				getInjectScripts: this.init.yieldGetInjectScripts(
 					this.init.config,
 					this.init.sjconfig,
 					this.init.prefix,
 					this.cookieJar,
 					this.init.codecEncode,
-					this.init.codecDecode
+					this.init.codecDecode,
+					inline
 				),
 				codecEncode: this.init.codecEncode,
 				codecDecode: this.init.codecDecode,

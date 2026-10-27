@@ -43,7 +43,18 @@ export type Config = {
 	wasmPath: string;
 	virtualWasmPath: string;
 	codec: Record<"encode" | "decode", (input: string) => string>;
+	/**
+	 * Serve inline scripts (the page's and Scramjet's own bootstrap) from same-origin URLs, for a host whose
+	 * CSP forbids inline script. Unset: on when the controller runs in an Isolated Web App (`isolated-app:`),
+	 * whose CSP is `script-src 'self'`, and off everywhere else.
+	 */
+	inlineScripts?: boolean;
 };
+
+/** Path, under a frame's prefix, of the scripts made from inline code (see `Config.inlineScripts`). */
+const INLINE_SCRIPT_PATH = "__sjinline/";
+/** Inline scripts kept per frame; the oldest are dropped first. Generous: a page's scripts are fetched once. */
+const INLINE_SCRIPT_LIMIT = 4096;
 
 export const config: Config = {
 	prefix: "/~/sj/",
@@ -278,6 +289,21 @@ export class Controller {
 				// doesn't actually *load* every request, but hold up requests until the promise finishes
 				await this.loadSavedCookies();
 
+				if (path.startsWith(frame.prefix + INLINE_SCRIPT_PATH)) {
+					const code = frame.inlineScripts.get(
+						path.slice(frame.prefix.length + INLINE_SCRIPT_PATH.length)
+					);
+					return [
+						{
+							body: code ?? "",
+							status: code === undefined ? 404 : 200,
+							statusText: code === undefined ? "Not Found" : "OK",
+							headers: [["Content-Type", "text/javascript; charset=utf-8"]],
+						},
+						[],
+					];
+				}
+
 				if (path === frame.prefix + this.config.virtualWasmPath) {
 					if (!this.wasmPayload) {
 						const resp = await fetch(this.config.wasmPath);
@@ -452,6 +478,8 @@ export class Controller {
 		assertRuntimeScramjetVersion();
 		this.id = makeId();
 		this.config = deepMerge(config, init.config || {}) as Config;
+		// resolved once, so the documents (which receive this config) agree with the controller
+		this.config.inlineScripts ??= location.protocol === "isolated-app:";
 		this.scramjetConfig = deepMerge(scramjetConfig, scramjetDefaultConfig);
 		this.scramjetConfig = deepMerge(
 			this.scramjetConfig,
@@ -664,7 +692,8 @@ function yieldGetInjectScripts(
 	prefix: URL,
 	cookieJar: CookieJar,
 	codecEncode: (input: string) => string,
-	codecDecode: (input: string) => string
+	codecDecode: (input: string) => string,
+	inline?: (code: string) => string
 ) {
 	const getInjectScripts: ScramjetInterface["getInjectScripts"] = (
 		meta,
@@ -683,13 +712,16 @@ function yieldGetInjectScripts(
 					.join("")
 			);
 		}
+		const scriptUrl = (code: string) =>
+			inline
+				? inline(code)
+				: "data:text/javascript;charset=utf-8;base64," + base64Encode(code);
 		return [
 			script(config.scramjetPath),
 			script(prefix.href + config.virtualWasmPath),
 			script(config.injectPath),
 			script(
-				"data:text/javascript;charset=utf-8;base64," +
-					base64Encode(`
+				scriptUrl(`
 					document.querySelectorAll("script[scramjet-injected]").forEach(script => script.remove());
 					$scramjetController.load({
 						config: ${JSON.stringify(config)},
@@ -719,28 +751,55 @@ export class Frame {
 		error: FrameErrorHooks;
 	};
 
+	/** Code served at `<prefix>__sjinline/<key>.js` (see `Config.inlineScripts`). */
+	inlineScripts: Map<string, string> = new Map();
+
+	/** Keeps `code` and returns the same-origin URL it is served from. Equal code gets the same URL. */
+	inlineScript = (code: string): string => {
+		let h1 = 0xdeadbeef ^ code.length;
+		let h2 = 0x41c6ce57 ^ code.length;
+		for (let i = 0; i < code.length; i++) {
+			const c = code.charCodeAt(i);
+			h1 = Math.imul(h1 ^ c, 2654435761);
+			h2 = Math.imul(h2 ^ c, 1597334677);
+		}
+		let key = `${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}${code.length.toString(36)}`;
+		// a collision must never run the wrong code
+		for (let n = 1; this.inlineScripts.has(key + ".js") && this.inlineScripts.get(key + ".js") !== code; n++)
+			key = key.replace(/(-\d+)?$/, "-" + n);
+		key += ".js";
+		this.inlineScripts.delete(key);
+		this.inlineScripts.set(key, code);
+		if (this.inlineScripts.size > INLINE_SCRIPT_LIMIT)
+			this.inlineScripts.delete(this.inlineScripts.keys().next().value!);
+		return location.origin + this.prefix + INLINE_SCRIPT_PATH + key;
+	};
+
 	get context(): ScramjetContext {
+		const inline = this.controller.config.inlineScripts
+			? this.inlineScript
+			: undefined;
 		return {
 			config: this.controller.scramjetConfig,
 			prefix: new URL(this.prefix, location.href),
 			cookieJar: this.controller.cookieJar,
 			interface: {
+				inlineScript: inline,
 				getInjectScripts: yieldGetInjectScripts(
 					this.controller.config,
 					this.controller.scramjetConfig,
 					new URL(this.prefix, location.href),
 					this.controller.cookieJar,
 					this.controller.config.codec.encode,
-					this.controller.config.codec.decode
+					this.controller.config.codec.decode,
+					inline
 				),
 				getWorkerInjectScripts: (meta, type, script) => {
 					let str = "";
 
 					str += script(this.controller.config.scramjetPath);
 					str += script(this.prefix + this.controller.config.virtualWasmPath);
-					str += script(
-						"data:text/javascript;charset=utf-8;base64," +
-							base64Encode(`
+					const workerBoot = `
 					(()=>{
 						const { ScramjetClient, CookieJar, setWasm } = $scramjet;
 
@@ -766,7 +825,12 @@ export class Frame {
 
 						client.hook();
 					})();
-					`)
+					`;
+					str += script(
+						inline
+							? inline(workerBoot)
+							: "data:text/javascript;charset=utf-8;base64," +
+									base64Encode(workerBoot)
 					);
 
 					return str;

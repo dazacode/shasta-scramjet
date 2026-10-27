@@ -37,13 +37,24 @@ export default function (client: ScramjetClient, self: Self) {
 				} = pollutant;
 
 				// invoking stolen function will give us the caller's globalThis, remember scramjet has already proxied it!!!
-				const callerGlobalThisProxied: Self = Function("return globalThis")();
-				const callerClient = callerGlobalThisProxied[SCRAMJETCLIENT];
-
 				// this WOULD be enough but the source argument of MessageEvent has to return the caller's window
 				// and if we just call it normally it would be coming from here, which WILL NOT BE THE CALLER'S because the accessor is from the parent
 				// so with the stolen function we wrap postmessage so the source will truly be the caller's window (remember that function is scramjet's!!!)
-				const wrappedPostMessage = Function("...args", "this(...args)");
+				// Under a CSP without 'unsafe-eval' (an Isolated Web App) Function() throws: then the caller is taken
+				// to be this realm, which is right unless one frame posts through another frame's window object.
+				let callerClient: ScramjetClient;
+				let wrappedPostMessage: (...args: any[]) => any;
+				try {
+					const callerGlobalThisProxied: Self = Function("return globalThis")();
+					callerClient = callerGlobalThisProxied[SCRAMJETCLIENT];
+					wrappedPostMessage = Function("...args", "this(...args)");
+				} catch {
+					callerClient = client;
+					// like `this(...args)` above: no receiver, so the platform posts to the function's own window
+					wrappedPostMessage = function (this: Function, ...args: any[]) {
+						return Reflect.apply(this, undefined, args);
+					};
+				}
 
 				// console.log(
 				// 	callerClient,

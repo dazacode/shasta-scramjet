@@ -31,26 +31,23 @@ export default function (client: ScramjetClient, _self: Self) {
 
 	client.Proxy("Function", handler);
 
-	const RawFunction = client.natives.call(
-		"eval",
-		null,
-		"(function () {})"
-	).constructor;
-	const RawAsyncFunction = client.natives.call(
-		"eval",
-		null,
-		"(async function () {})"
-	).constructor;
-	const RawGeneratorFunction = client.natives.call(
-		"eval",
-		null,
-		"(function* () {})"
-	).constructor;
-	const RawAsyncGeneratorFunction = client.natives.call(
-		"eval",
-		null,
-		"(async function* () {})"
-	).constructor;
+	// The constructors of the hooked realm. eval gets them from that realm even when this code runs in a
+	// parent's; under a CSP without 'unsafe-eval' (an Isolated Web App) it throws, and this realm's own are
+	// used, which is the same realm whenever a page hooks itself (the usual case).
+	const rawCtor = (source: string, local: Function) => {
+		try {
+			return client.natives.call("eval", null, source).constructor;
+		} catch {
+			return local.constructor;
+		}
+	};
+	const RawFunction = rawCtor("(function () {})", function () {});
+	const RawAsyncFunction = rawCtor("(async function () {})", async function () {});
+	const RawGeneratorFunction = rawCtor("(function* () {})", function* () {});
+	const RawAsyncGeneratorFunction = rawCtor(
+		"(async function* () {})",
+		async function* () {}
+	);
 
 	client.RawProxy(RawFunction.prototype, "constructor", handler);
 	client.RawProxy(RawAsyncFunction.prototype, "constructor", handler);

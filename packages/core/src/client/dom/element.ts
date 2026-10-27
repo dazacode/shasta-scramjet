@@ -448,6 +448,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 					"scramjet-attr-script-source-src",
 					bytesToBase64(TextEncoder_encode(newval))
 				);
+				newval = asScriptSource(ctx.this, newval as string) ?? newval;
 			} else if (client.box.instanceof(ctx.this, "HTMLStyleElement")) {
 				newval = rewriteCss(html, client.context, client.meta);
 			} else {
@@ -491,6 +492,24 @@ export default function (client: ScramjetClient, self: typeof window) {
 		},
 	});
 
+	// Under a CSP that forbids inline script (an Isolated Web App) a script's text never runs: serve it from a
+	// same-origin URL instead. It then runs once loaded, not synchronously on insertion.
+	const asScriptSource = (element: Element, js: string): string | null => {
+		const inline = client.context.interface.inlineScript;
+		if (
+			!inline ||
+			client.natives.call("Element.prototype.hasAttribute", element, "src")
+		)
+			return null;
+		client.natives.call(
+			"Element.prototype.setAttribute",
+			element,
+			"src",
+			inline(js)
+		);
+		return "";
+	};
+
 	const rewriteTextForElement = (element: Element, value: string) => {
 		const scriptBlockType = client.box.instanceof(element, "HTMLScriptElement")
 			? scriptBlockTypeForElement(client, element)
@@ -514,7 +533,7 @@ export default function (client: ScramjetClient, self: typeof window) {
 				bytesToBase64(TextEncoder_encode(value))
 			);
 
-			return newval;
+			return asScriptSource(element, newval) ?? newval;
 		} else if (client.box.instanceof(element, "HTMLStyleElement")) {
 			return rewriteCss(value, client.context, client.meta);
 		} else {

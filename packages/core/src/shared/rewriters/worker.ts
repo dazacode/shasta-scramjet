@@ -18,7 +18,9 @@ export function rewriteWorkers(
 		return `importScripts("${script}");\n`;
 	};
 	const b64 = (script: string) =>
-		`data:text/javascript;charset=utf-8;base64,${base64Encode(script)}`;
+		context.interface.inlineScript
+			? context.interface.inlineScript(script)
+			: `data:text/javascript;charset=utf-8;base64,${base64Encode(script)}`;
 	let str = context.interface.getWorkerInjectScripts(meta, isModule, script);
 
 	let rewritten = rewriteJs(js, url, context, meta, isModule);

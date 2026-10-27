@@ -233,11 +233,17 @@ export function unrewriteUrl(url: string | URL, context: ScramjetContext) {
 		return url;
 	} else if (
 		String_startsWith(url, "http:") ||
-		String_startsWith(url, "https:")
+		String_startsWith(url, "https:") ||
+		// the prefix is not always http(s): an Isolated Web App serves Scramjet from isolated-app://
+		String_startsWith(url, context.prefix.origin + "/")
 	) {
 		const realUrl = tryCanParseURL(url);
 		if (!realUrl) return url;
-		if (realUrl.protocol != "http:" && realUrl.protocol != "https:") {
+		if (
+			realUrl.protocol != "http:" &&
+			realUrl.protocol != "https:" &&
+			realUrl.protocol != context.prefix.protocol
+		) {
 			// custom protocol
 			return url;
 		}

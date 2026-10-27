@@ -2,12 +2,20 @@ import { ScramjetClient } from "@client/index";
 import { Object_defineProperty, _URL } from "@/shared/snapshot";
 
 export default function (client: ScramjetClient, self: Self) {
-	const boundimport = client.natives.call(
-		"Function",
-		null,
-		"url",
-		"return import(url)"
-	);
+	// import() bound to the hooked realm. Function() throws under a CSP without 'unsafe-eval' (an Isolated Web
+	// App); this realm's own import() is then used, which is the same realm whenever a page hooks itself.
+	let boundimport: (url: string) => Promise<unknown>;
+	try {
+		boundimport = client.natives.call(
+			"Function",
+			null,
+			"url",
+			"return import(url)"
+		);
+	} catch {
+		boundimport = (url: string) =>
+			import(/* webpackIgnore: true */ /* @vite-ignore */ url);
+	}
 
 	Object_defineProperty(self, client.config.globals.importfn, {
 		value: function (base: string, url: string) {
