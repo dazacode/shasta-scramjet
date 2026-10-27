@@ -45,7 +45,9 @@ class ControllerReference {
 	constructor(
 		public prefix: string,
 		public id: string,
-		port: MessagePort
+		port: MessagePort,
+		/** the window that runs this controller, when known */
+		public clientId?: string
 	) {
 		this.rpc = new RpcHelper(
 			{
@@ -154,13 +156,38 @@ addEventListener("message", (e) => {
 	if (existing !== -1) {
 		tabs.splice(existing, 1);
 	}
-	tabs.push(new ControllerReference(init.prefix, init.id, e.ports[0]));
+	const source = e.source as Client | null;
+	tabs.push(
+		new ControllerReference(init.prefix, init.id, e.ports[0], source?.id)
+	);
 });
 
 export function shouldRoute(event: FetchEvent): boolean {
 	const url = new URL(event.request.url);
 	const tab = tabs.find((tab) => url.pathname.startsWith(tab.prefix));
 	return tab !== undefined;
+}
+
+/**
+ * Settles `pending` or rejects once the controller's window is gone. A request that was in flight when its
+ * tab closed would otherwise never be answered, and a fetch event that never finishes keeps this worker
+ * alive and blocks every update from activating.
+ */
+function untilGone<T>(tab: ControllerReference, pending: Promise<T>): Promise<T> {
+	if (!tab.clientId) return pending;
+	return new Promise<T>((resolve, reject) => {
+		const timer = setInterval(async () => {
+			if (await clients.get(tab.clientId!)) return;
+			clearInterval(timer);
+			const at = tabs.indexOf(tab);
+			if (at !== -1) tabs.splice(at, 1);
+			reject(new Error("the tab that made this request was closed"));
+		}, 2000);
+		pending.then(
+			(v) => (clearInterval(timer), resolve(v)),
+			(e) => (clearInterval(timer), reject(e))
+		);
+	});
 }
 
 export async function route(event: FetchEvent): Promise<Response> {
@@ -171,7 +198,7 @@ export async function route(event: FetchEvent): Promise<Response> {
 
 		const rawheaders: RawHeaders = [...event.request.headers];
 
-		const response = await tab.rpc.call(
+		const response = await untilGone(tab, tab.rpc.call(
 			"request",
 			{
 				rawUrl: event.request.url,
@@ -192,7 +219,7 @@ export async function route(event: FetchEvent): Promise<Response> {
 				event.request.body instanceof ArrayBuffer
 				? [event.request.body]
 				: undefined
-		);
+		));
 
 		return new Response(response.body, {
 			status: response.status,
