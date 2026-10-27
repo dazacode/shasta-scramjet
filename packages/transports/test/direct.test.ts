@@ -175,3 +175,21 @@ describe("header bookkeeping", () => {
 		expect(STACK_OWNED_REQUEST_HEADERS.has("x-custom")).toBe(false);
 	});
 });
+
+describe("default fetch", () => {
+	it("calls the global fetch with the global as `this` (a browser throws Illegal invocation otherwise)", async () => {
+		const real = globalThis.fetch;
+		globalThis.fetch = function (this: unknown) {
+			if (this !== globalThis && this !== undefined) throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+			return Promise.resolve(new Response("ok"));
+		} as unknown as typeof globalThis.fetch;
+		try {
+			const transport = new DirectTransport();
+			await transport.init();
+			const response = await transport.request(new URL("https://example.test/"), "GET", null, [], undefined);
+			expect(response.status).toBe(200);
+		} finally {
+			globalThis.fetch = real;
+		}
+	});
+});

@@ -60,7 +60,8 @@ export class DirectTransport implements ProxyTransport {
 	};
 
 	constructor(options: DirectTransportOptions = {}) {
-		this.#fetch = options.fetch ?? globalThis.fetch;
+		// the browser's fetch must be called with `this` = the global ("Illegal invocation" otherwise)
+		this.#fetch = options.fetch ?? (globalThis.fetch?.bind(globalThis) as typeof globalThis.fetch);
 		this.#WebSocket = options.WebSocket ?? globalThis.WebSocket;
 		this.#hooks = options;
 		this.#options = {
