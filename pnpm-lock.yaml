@@ -284,6 +284,18 @@ importers:
         specifier: ^8.18.1
         version: 8.18.1
 
+  packages/transports:
+    devDependencies:
+      '@mercuryworkshop/proxy-transports':
+        specifier: 'catalog:'
+        version: 1.0.2
+      '@types/bun':
+        specifier: ^1.3.0
+        version: 1.4.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/utils:
     devDependencies:
       '@mercuryworkshop/scramjet':
@@ -936,6 +948,9 @@ packages:
   '@types/bonjour@3.5.13':
     resolution: {integrity: sha512-z9fJ5Im06zvUL548KvYNecEVlA7cVDkGUi6kZusb04mpyEFKCIZJvloCcmpmLaIahDpOQGHaHmG6imtPMmPXGQ==}
 
+  '@types/bun@1.4.4':
+    resolution: {integrity: sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ==}
+
   '@types/connect-history-api-fallback@1.5.4':
     resolution: {integrity: sha512-n6Cr2xS1h4uAulPRdlw6Jl6s1oG8KrVilPN2yUITEs+K48EzMJJ3W1xy8K5eWuFvjp3R74AOIGSmp2UfBJ8HFw==}
 
@@ -1343,6 +1358,9 @@ packages:
   bufferutil@4.0.9:
     resolution: {integrity: sha512-WDtdLmJvAuNNPzByAYpRo2rF1Mmradw6gvWsQKf63476DDXmomT9zUiGypLcG4ibIM67vhAj8jJRdbmEws2Aqw==}
     engines: {node: '>=6.14.2'}
+
+  bun-types@1.4.4:
+    resolution: {integrity: sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ==}
 
   bundle-name@4.1.0:
     resolution: {integrity: sha512-tjwM5exMg6BGRI+kNmTntNsvdZS1X8BFYS6tnJ2hdH0kVxM6/eVZ2xy+FqStSWvYmtfFMDLIxurorHwDKfDz5Q==}
@@ -4078,20 +4096,24 @@ snapshots:
   '@types/body-parser@1.19.6':
     dependencies:
       '@types/connect': 3.4.38
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
 
   '@types/bonjour@3.5.13':
     dependencies:
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
+
+  '@types/bun@1.4.4':
+    dependencies:
+      bun-types: 1.4.4
 
   '@types/connect-history-api-fallback@1.5.4':
     dependencies:
       '@types/express-serve-static-core': 5.1.0
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
 
   '@types/cors@2.8.19':
     dependencies:
@@ -4116,14 +4138,14 @@ snapshots:
 
   '@types/express-serve-static-core@4.19.7':
     dependencies:
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
       '@types/qs': 6.14.0
       '@types/range-parser': 1.2.7
       '@types/send': 1.2.1
 
   '@types/express-serve-static-core@5.1.0':
     dependencies:
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
       '@types/qs': 6.14.0
       '@types/range-parser': 1.2.7
       '@types/send': 1.2.1
@@ -4155,7 +4177,7 @@ snapshots:
 
   '@types/node-forge@1.3.14':
     dependencies:
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
 
   '@types/node@22.18.11':
     dependencies:
@@ -4182,11 +4204,11 @@ snapshots:
   '@types/send@0.17.6':
     dependencies:
       '@types/mime': 1.3.5
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
 
   '@types/send@1.2.1':
     dependencies:
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
 
   '@types/serve-index@1.9.4':
     dependencies:
@@ -4195,14 +4217,14 @@ snapshots:
   '@types/serve-static@1.15.10':
     dependencies:
       '@types/http-errors': 2.0.5
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
       '@types/send': 0.17.6
 
   '@types/serviceworker@0.0.197': {}
 
   '@types/sockjs@0.3.36':
     dependencies:
-      '@types/node': 24.9.1
+      '@types/node': 26.0.1
 
   '@types/tapable@2.2.7':
     dependencies:
@@ -4646,6 +4668,11 @@ snapshots:
   bufferutil@4.0.9:
     dependencies:
       node-gyp-build: 4.8.4
+
+  bun-types@1.4.4:
+    dependencies:
+      '@types/node': 26.0.1
+      undici-types: 8.3.0
 
   bundle-name@4.1.0:
     dependencies:
