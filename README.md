@@ -1,3 +1,7 @@
+> **This is the Shasta fork.** [`MercuryWorkshop/scramjet`](https://github.com/MercuryWorkshop/scramjet) plus a
+> handful of upstream fixes and a transport-porting package, on the `shasta` branch.
+> See [`FORK.md`](FORK.md) for what changed, how to sync from upstream, and how to roll back.
+
 <h1 align="center">Scramjet</h1>
 <div align="center">
   <img src="assets/scramjet.png" height="200" />
