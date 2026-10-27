@@ -256,6 +256,19 @@ export function unrewriteUrl(url: string | URL, context: ScramjetContext) {
 				realUrl.href.slice(context.prefix.href.length)
 			) + realHash
 		);
+	} else if (url != "" && String_startsWith(url, context.prefix.href)) {
+		// the proxy itself is not on http(s), e.g. a chrome-extension:// page (Shasta's extension build)
+		const realUrl = tryCanParseURL(url);
+		if (!realUrl) return url;
+		const decodedHash = context.interface.codecDecode(realUrl.hash.slice(1));
+		const realHash = decodedHash ? "#" + decodedHash : "";
+		realUrl.hash = "";
+		realUrl.search = "";
+		return (
+			context.interface.codecDecode(
+				realUrl.href.slice(context.prefix.href.length)
+			) + realHash
+		);
 	} else if (url == "") {
 		return url;
 	} else {
