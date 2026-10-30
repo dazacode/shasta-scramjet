@@ -164,7 +164,20 @@ function openCookieDatabase(): Promise<IDBDatabase> {
 	return cookieDbPromise;
 }
 
-async function readCookieState(): Promise<PersistedCookieState | null> {
+/** sessionStorage key of the cookie jar when the controller has a storage scope (ScramjetConfig.storageScope) */
+const COOKIE_SESSION_KEY = "__scramjet_cookies";
+
+async function readCookieState(
+	sessionOnly = false
+): Promise<PersistedCookieState | null> {
+	if (sessionOnly) {
+		try {
+			const raw = sessionStorage.getItem(COOKIE_SESSION_KEY);
+			return raw ? parsePersistedCookieState(JSON.parse(raw)) : null;
+		} catch {
+			return null;
+		}
+	}
 	try {
 		const db = await openCookieDatabase();
 		const transaction = db.transaction(COOKIE_STORE_NAME, "readonly");
@@ -180,8 +193,20 @@ async function readCookieState(): Promise<PersistedCookieState | null> {
 
 async function writeCookieState(
 	cookies: string,
-	currentUpdatedAt: number
+	currentUpdatedAt: number,
+	sessionOnly = false
 ): Promise<number> {
+	if (sessionOnly) {
+		const updatedAt = Math.max(Date.now(), currentUpdatedAt + 1);
+		try {
+			const state: PersistedCookieState = { updatedAt, cookies };
+			sessionStorage.setItem(COOKIE_SESSION_KEY, JSON.stringify(state));
+		} catch (error) {
+			// over quota: the jar still works for this page, it just will not survive a reload
+			console.error("Failed to keep controller cookies:", error);
+		}
+		return updatedAt;
+	}
 	try {
 		const db = await openCookieDatabase();
 		const transaction = db.transaction(COOKIE_STORE_NAME, "readwrite");
@@ -245,6 +270,8 @@ export class Controller {
 	private cookieSyncPromise: Promise<void> | null = null;
 	private cookieSyncDirty = true;
 	private cookieSyncChannel = new BroadcastChannel(BROADCASTCHANNEL_NAME);
+	/** ScramjetConfig.storageScope: the jar lives in this tab's sessionStorage, never in IndexedDB */
+	private sessionOnlyCookies = false;
 
 	private wasmAlreadyFetched = false;
 	private wasmPayload: string | null = null;
@@ -486,6 +513,7 @@ export class Controller {
 			init.scramjetConfig || {}
 		) as ScramjetConfig;
 		this.prefix = this.config.prefix + this.id + "/";
+		this.sessionOnlyCookies = !!this.scramjetConfig.storageScope;
 		this.serviceWorkerController = init.serviceworker;
 
 		this.ready = Promise.all([
@@ -620,7 +648,7 @@ export class Controller {
 		}
 
 		this.cookieSyncPromise = (async () => {
-			const persisted = await readCookieState();
+			const persisted = await readCookieState(this.sessionOnlyCookies);
 			if (persisted && persisted.updatedAt > this.cookieUpdatedAt) {
 				this.cookieJar.load(persisted.cookies);
 				this.cookieUpdatedAt = persisted.updatedAt;
@@ -636,7 +664,8 @@ export class Controller {
 	async persistCookies(): Promise<void> {
 		const updatedAt = await writeCookieState(
 			this.cookieJar.dump(),
-			this.cookieUpdatedAt
+			this.cookieUpdatedAt,
+			this.sessionOnlyCookies
 		);
 		if (updatedAt <= this.cookieUpdatedAt) {
 			return;
@@ -644,6 +673,8 @@ export class Controller {
 
 		this.cookieUpdatedAt = updatedAt;
 		this.cookieSyncDirty = false;
+		// a session-only jar belongs to this tab: other windows of the origin are not told about it
+		if (this.sessionOnlyCookies) return;
 		this.cookieSyncChannel.postMessage({
 			updatedAt,
 		});

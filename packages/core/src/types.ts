@@ -48,6 +48,14 @@ export interface ScramjetConfig {
 	flags: ScramjetFlags;
 	siteFlags: Record<string, Partial<ScramjetFlags>>;
 	maskedfiles: string[];
+	/**
+	 * Keep proxied sites' storage out of the host origin's shared, persistent storage (for a host origin that other
+	 * people's pages share, e.g. a CDN). When set: sites' localStorage is kept in the tab's sessionStorage, their
+	 * IndexedDB names get this scope as a prefix (so the embedder can delete a closed tab's databases), and the
+	 * controller keeps the cookie jar in sessionStorage instead of IndexedDB and does not sync it across windows.
+	 * Unset: the usual persistent storage.
+	 */
+	storageScope?: string;
 }
 
 /**
